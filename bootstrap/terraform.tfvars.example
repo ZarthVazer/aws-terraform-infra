@@ -1,0 +1,2 @@
+region            = "eu-central-1"
+state_bucket_name = "zarthvazer-terraform-state-CHANGE-ME"

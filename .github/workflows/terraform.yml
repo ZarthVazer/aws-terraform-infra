@@ -1,0 +1,88 @@
+name: Terraform
+
+on:
+  push:
+    branches: [main]
+    paths: ["**.tf", "**.hcl", ".github/workflows/terraform.yml", ".trivyignore"]
+  pull_request:
+    paths: ["**.tf", "**.hcl", ".github/workflows/terraform.yml", ".trivyignore"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_VERSION: "1.16.5"
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - run: terraform fmt -check -recursive -diff
+
+  validate:
+    name: Validate (${{ matrix.dir }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [bootstrap, modules/vpc, environments/dev]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Init without backend
+        run: terraform -chdir=${{ matrix.dir }} init -backend=false -input=false
+      - name: Validate
+        run: terraform -chdir=${{ matrix.dir }} validate
+
+  tflint:
+    name: TFLint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: terraform-linters/setup-tflint@v6
+        with:
+          tflint_version: v0.64.0
+      - name: Init plugins
+        run: tflint --init
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # avoids GitHub API rate limits
+      - name: Lint
+        run: tflint --recursive --format compact
+
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Trivy config scan (fails on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          trivyignores: .trivyignore
+      - name: Trivy report for the Security tab
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy-iac.sarif
+          trivyignores: .trivyignore
+      - name: Upload SARIF
+        if: always() && hashFiles('trivy-iac.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-iac.sarif

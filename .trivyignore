@@ -1,0 +1,11 @@
+# Accepted risks, reviewed on 2026-10-05.
+
+# AWS-0089: S3 access logging on the Terraform state bucket.
+# State access is already audited through CloudTrail data events in a real
+# account; a separate log bucket would add cost and another stack to manage.
+AWS-0089
+
+# AWS-0017: CloudWatch log group for VPC flow logs uses the default AWS-managed
+# encryption instead of a customer-managed KMS key. Flow logs contain no secrets;
+# a dedicated CMK costs about $1/month per key and is planned for prod.
+AWS-0017
