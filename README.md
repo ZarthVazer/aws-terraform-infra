@@ -4,13 +4,13 @@
 ![Terraform](https://img.shields.io/badge/terraform-%E2%89%A51.11-7B42BC?logo=terraform&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS-provider%206.x-FF9900?logo=amazonwebservices&logoColor=white)
 
-Modular AWS infrastructure written in Terraform: secure remote state, a reusable multi-AZ VPC module and separate environments, checked on every change by formatting, validation, linting and a security scan.
+Modular AWS infrastructure written in Terraform: secure remote state, reusable VPC and EKS modules and separate environments, checked on every change by formatting, validation, linting and a security scan.
 
 > 🚧 **Work in progress.** Built step by step, like a real platform team would:
 > - [x] Remote state backend (S3 + KMS + native locking)
 > - [x] VPC module and `dev` environment
 > - [x] CI: fmt, validate, tflint, Trivy
-> - [ ] EKS module (managed node groups, IRSA)
+> - [x] EKS module (managed node group, IRSA, KMS-encrypted secrets, access entries)
 > - [ ] `prod` environment with highly available NAT
 > - [ ] `terraform plan` in pull requests via GitHub OIDC (no static AWS keys)
 
@@ -37,12 +37,16 @@ flowchart TB
             end
         end
         FL[VPC Flow Logs → CloudWatch]
+        EKS[EKS control plane<br/>private endpoint]
+        NG[Managed node group<br/>SPOT t3.medium]
     end
 
     IGW --- PubA & PubB
     PrivA -->|0.0.0.0/0| PubA
     PrivB -->|0.0.0.0/0| PubA
     vpc -.-> FL
+    EKS --- NG
+    NG --- PrivA & PrivB
     dev -. state .-> S3
 ```
 
@@ -52,7 +56,8 @@ flowchart TB
 .
 ├── bootstrap/              # S3 bucket + KMS key for remote state (local state, run once)
 ├── modules/
-│   └── vpc/                # reusable VPC module (see its README)
+│   ├── vpc/                # multi-AZ network (see its README)
+│   └── eks/                # Kubernetes cluster + node group (see its README)
 ├── environments/
 │   └── dev/                # dev environment: wires modules together, own state file
 ├── .github/workflows/      # CI: fmt, validate, tflint, Trivy
@@ -74,6 +79,7 @@ terraform init && terraform apply
 
 # 2. Put that bucket name into environments/dev/backend.tf, then:
 cd ../environments/dev
+cp terraform.tfvars.example terraform.tfvars   # your IP and IAM user for kubectl access
 terraform init
 terraform plan
 terraform apply
@@ -81,7 +87,14 @@ terraform apply
 
 Or with the Makefile: `make plan ENV=dev`, `make apply ENV=dev`.
 
-> 💰 **Cost note:** the NAT gateway is billed hourly (roughly $30–40/month plus traffic in most regions). Run `terraform destroy` in `environments/dev` when you are done experimenting. The state bucket itself costs cents.
+Connect to the cluster:
+
+```bash
+$(terraform output -raw configure_kubectl)
+kubectl get nodes
+```
+
+> 💰 **Cost note:** this is real, billed infrastructure. The EKS control plane costs about $0.10/hour (~$73/month), the NAT gateway roughly $30–40/month plus traffic, and SPOT nodes a few cents per hour each. Run `terraform destroy` in `environments/dev` when you are done experimenting. The state bucket itself costs cents.
 
 ## Design decisions
 
@@ -94,6 +107,10 @@ Or with the Makefile: `make plan ENV=dev`, `make apply ENV=dev`.
 **Secure defaults.** Public subnets don't auto-assign public IPs, the default security group has no rules, VPC flow logs are on, and the flow-log IAM role can only write to its own log group.
 
 **Ready for EKS.** Subnets carry the `kubernetes.io/role/elb` and `internal-elb` tags, so the AWS Load Balancer Controller will find them without extra configuration.
+
+**EKS done the current way.** Cluster access uses EKS access entries (`authentication_mode = "API"`) instead of the legacy `aws-auth` ConfigMap, Kubernetes secrets are envelope-encrypted with a KMS key, all control plane logs are enabled, and nodes run Amazon Linux 2023. The API endpoint is private by default; dev can open it only to explicitly listed IPs, and a validation rule rejects `0.0.0.0/0`.
+
+**Cheap dev, sturdy prod.** Dev nodes are SPOT instances with two instance types to reduce interruption risk; the node group ignores `desired_size` drift so a cluster autoscaler can manage it without Terraform reverting its changes.
 
 **Security findings are explicit.** Trivy fails the build on HIGH/CRITICAL issues. The two LOW findings that are accepted are listed in `.trivyignore` together with the reason, instead of being silently disabled.
 

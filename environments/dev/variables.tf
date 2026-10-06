@@ -21,3 +21,21 @@ variable "az_count" {
   type        = number
   default     = 2
 }
+
+variable "kubernetes_version" {
+  description = "EKS control plane version."
+  type        = string
+  default     = "1.35"
+}
+
+variable "api_allowed_cidrs" {
+  description = "Your IPs (/32) allowed to reach the Kubernetes API from the internet. Empty = private endpoint only."
+  type        = list(string)
+  default     = []
+}
+
+variable "admin_principal_arns" {
+  description = "IAM users/roles that get cluster-admin access."
+  type        = list(string)
+  default     = []
+}

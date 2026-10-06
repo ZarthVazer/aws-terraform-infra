@@ -36,3 +36,23 @@ module "vpc" {
 
   cluster_name = "${var.environment}-eks"
 }
+
+module "eks" {
+  source = "../../modules/eks"
+
+  cluster_name       = "${var.environment}-eks"
+  kubernetes_version = var.kubernetes_version
+  subnet_ids         = module.vpc.private_subnet_ids
+
+  # dev: reachable from your laptop if you list your IP, otherwise private
+  endpoint_public_access = length(var.api_allowed_cidrs) > 0
+  public_access_cidrs    = var.api_allowed_cidrs
+  admin_principal_arns   = var.admin_principal_arns
+
+  # dev: cheap SPOT nodes, several instance types for better availability
+  node_capacity_type  = "SPOT"
+  node_instance_types = ["t3.medium", "t3a.medium"]
+  node_min_size       = 1
+  node_desired_size   = 2
+  node_max_size       = 3
+}

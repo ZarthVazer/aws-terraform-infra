@@ -17,3 +17,13 @@ output "nat_public_ips" {
   description = "Outbound IPs of the environment."
   value       = module.vpc.nat_public_ips
 }
+
+output "cluster_name" {
+  description = "EKS cluster name."
+  value       = module.eks.cluster_name
+}
+
+output "configure_kubectl" {
+  description = "Command to point kubectl at the cluster."
+  value       = "aws eks update-kubeconfig --name ${module.eks.cluster_name} --region ${var.region}"
+}
