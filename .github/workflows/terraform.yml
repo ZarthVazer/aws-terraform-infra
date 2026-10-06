@@ -3,9 +3,9 @@ name: Terraform
 on:
   push:
     branches: [main]
-    paths: ["**.tf", "**.hcl", ".github/workflows/terraform.yml", ".trivyignore"]
+    paths: ["**.tf", "**.hcl", ".github/workflows/terraform.yml", ".trivyignore", "infracost.yml"]
   pull_request:
-    paths: ["**.tf", "**.hcl", ".github/workflows/terraform.yml", ".trivyignore"]
+    paths: ["**.tf", "**.hcl", ".github/workflows/terraform.yml", ".trivyignore", "infracost.yml"]
   workflow_dispatch: {}
 
 permissions:
@@ -158,3 +158,39 @@ jobs:
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
+
+  cost:
+    name: Cost estimate
+    # Enabled by repository variable INFRACOST_ENABLED=true and secret INFRACOST_API_KEY (free key)
+    if: github.event_name == 'pull_request' && vars.INFRACOST_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v4
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Checkout base branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+
+      - name: Cost of the base branch
+        run: infracost breakdown --config-file=infracost.yml --format=json --out-file=/tmp/infracost-base.json
+
+      - name: Checkout pull request
+        uses: actions/checkout@v7
+
+      - name: Cost difference
+        run: |
+          infracost diff --config-file=infracost.yml \
+            --compare-to=/tmp/infracost-base.json \
+            --format=json --out-file=/tmp/infracost.json
+
+      - name: Comment cost on the pull request
+        run: |
+          infracost comment github --path=/tmp/infracost.json \
+            --repo="$GITHUB_REPOSITORY" \
+            --github-token="${{ github.token }}" \
+            --pull-request="${{ github.event.pull_request.number }}" \
+            --behavior=update

@@ -1,0 +1,8 @@
+# Projects Infracost estimates. Used by `make cost` and the CI cost job.
+version: 0.1
+
+projects:
+  - path: environments/dev
+    name: dev
+  - path: environments/prod
+    name: prod

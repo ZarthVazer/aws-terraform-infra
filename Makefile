@@ -1,7 +1,7 @@
 ENV ?= dev
 DIR := environments/$(ENV)
 
-.PHONY: fmt lint security init plan apply destroy
+.PHONY: fmt lint security cost init plan apply destroy
 
 fmt:            ## Format all Terraform files
 	terraform fmt -recursive
@@ -11,6 +11,9 @@ lint:           ## Run tflint on all directories
 
 security:       ## Scan Terraform code for misconfigurations
 	trivy config --severity HIGH,CRITICAL .
+
+cost:           ## Estimate monthly cost of dev and prod (needs: infracost auth login)
+	infracost breakdown --config-file=infracost.yml
 
 init:           ## terraform init for ENV (default: dev)
 	terraform -chdir=$(DIR) init
