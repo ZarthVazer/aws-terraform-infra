@@ -17,3 +17,9 @@ variable "tags" {
     ManagedBy = "terraform"
   }
 }
+
+variable "github_repository" {
+  description = "GitHub repository (owner/name) whose workflows may assume the CI role."
+  type        = string
+  default     = "ZarthVazer/aws-terraform-infra"
+}
