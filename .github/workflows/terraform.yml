@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dir: [bootstrap, modules/vpc, modules/eks, environments/dev]
+        dir: [bootstrap, modules/vpc, modules/eks, environments/dev, environments/prod]
     steps:
       - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v4

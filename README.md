@@ -11,7 +11,7 @@ Modular AWS infrastructure written in Terraform: secure remote state, reusable V
 > - [x] VPC module and `dev` environment
 > - [x] CI: fmt, validate, tflint, Trivy
 > - [x] EKS module (managed node group, IRSA, KMS-encrypted secrets, access entries)
-> - [ ] `prod` environment with highly available NAT
+> - [x] `prod` environment: 3 AZs, NAT per AZ, private-only API, on-demand nodes
 > - [ ] `terraform plan` in pull requests via GitHub OIDC (no static AWS keys)
 
 ## Architecture
@@ -59,7 +59,8 @@ flowchart TB
 │   ├── vpc/                # multi-AZ network (see its README)
 │   └── eks/                # Kubernetes cluster + node group (see its README)
 ├── environments/
-│   └── dev/                # dev environment: wires modules together, own state file
+│   ├── dev/                # cheap: 2 AZs, 1 NAT, SPOT nodes, optional public API
+│   └── prod/               # resilient: 3 AZs, NAT per AZ, on-demand nodes, private API
 ├── .github/workflows/      # CI: fmt, validate, tflint, Trivy
 ├── .tflint.hcl             # lint rules incl. AWS ruleset
 └── .trivyignore            # accepted security findings, each with a reason
@@ -110,7 +111,18 @@ kubectl get nodes
 
 **EKS done the current way.** Cluster access uses EKS access entries (`authentication_mode = "API"`) instead of the legacy `aws-auth` ConfigMap, Kubernetes secrets are envelope-encrypted with a KMS key, all control plane logs are enabled, and nodes run Amazon Linux 2023. The API endpoint is private by default; dev can open it only to explicitly listed IPs, and a validation rule rejects `0.0.0.0/0`.
 
-**Cheap dev, sturdy prod.** Dev nodes are SPOT instances with two instance types to reduce interruption risk; the node group ignores `desired_size` drift so a cluster autoscaler can manage it without Terraform reverting its changes.
+**Cheap dev, sturdy prod.** The two environments use the same modules with different settings:
+
+| | dev | prod |
+|---|---|---|
+| Availability zones | 2 | 3 |
+| NAT gateways | 1 shared | 1 per AZ |
+| Kubernetes API | private, optional allow-listed public access | private only |
+| Nodes | SPOT `t3.medium` / `t3a.medium`, 1–3 | on-demand `m6i.large`, 2–6 |
+| Log retention | 30 days | 90 days |
+| VPC CIDR | `10.10.0.0/16` | `10.20.0.0/16` (no overlap, can be peered) |
+
+Dev nodes are SPOT instances with two instance types to reduce interruption risk; the node group ignores `desired_size` drift so a cluster autoscaler can manage it without Terraform reverting its changes.
 
 **Security findings are explicit.** Trivy fails the build on HIGH/CRITICAL issues. The two LOW findings that are accepted are listed in `.trivyignore` together with the reason, instead of being silently disabled.
 
